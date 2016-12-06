@@ -11,16 +11,16 @@ md5 = hash
 -- takes a string and a starting nounce
 -- finds the first nounce such that md5(string + nounce) starts with 5 zeros
 -- returns the md5 digest and the found nounce + 1
-nextChar :: String -> Word64 -> (String, Word64)
-nextChar str nounce = let
+nextDigest :: String -> Word64 -> (String, Word64)
+nextDigest str nounce = let
         digest = show . md5 $ pack (str ++ show nounce)
     in if take 5 digest == "00000"
         then (digest, nounce + 1)
-        else nextChar str (nounce + 1)
+        else nextDigest str (nounce + 1)
 
 -- takes a string and a md5 digest, returns a modified string
 -- p = digest[5], c = digest[6]
--- if string[p] =/= '_' then string[6] = c
+-- if string[p] =/= '_' then string[p] = c
 applyDigest :: String -> String -> String
 applyDigest str digest = let
         p = digitToInt $ digest !! 5
@@ -35,8 +35,8 @@ main :: IO()
 main = do
     door <- fmap (head . lines) $ readFile "input.txt"
 
-    -- list of all digests of type door name + nounce that start with 5 zeros
-    let digests = tail $ iterate (nextChar door . snd) ("", 0)
+    -- list of all digests of type "door name + nounce" that start with 5 zeros
+    let digests = tail $ iterate (nextDigest door . snd) ("", 0)
 
     putStrLn "Running phase 1..."
 
