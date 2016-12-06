@@ -9,13 +9,12 @@ md5 :: ByteString -> Digest MD5
 md5 = hash
 
 -- takes a string and a starting nounce
--- finds the first nounce such that md5(strign + nounce) starts with 5 zeros
+-- finds the first nounce such that md5(string + nounce) starts with 5 zeros
 -- returns the md5 digest and the found nounce + 1
 nextChar :: String -> Word64 -> (String, Word64)
-nextChar str nounce = do
-    let digest = show . md5 $ pack (str ++ show nounce)
-
-    if take 5 digest == "00000"
+nextChar str nounce = let
+        digest = show . md5 $ pack (str ++ show nounce)
+    in if take 5 digest == "00000"
         then (digest, nounce + 1)
         else nextChar str (nounce + 1)
 
