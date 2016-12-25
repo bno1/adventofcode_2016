@@ -9,12 +9,12 @@ data Instruction =
     Copy Operand Operand |
     Inc Operand |
     Dec Operand |
-    Jnz Operand Int |
+    Jnz Operand Operand |
     Noop
     deriving (Show)
 
 -- cpu state described by program counter and register values
-data CPUState = CPUState Int (S.Seq Int) deriving (Show)
+data CPUState = CPUState !Int !(S.Seq Int) deriving (Show)
 
 -- returns the value of a register
 getRegValue :: CPUState -> Int -> Int
@@ -27,7 +27,15 @@ getPC (CPUState p _) = p
 -- applies the first function to the progam counter and the second
 -- function to the register referenced by the third argument
 modifyCpu :: (Int -> Int) -> (Int -> Int) -> Int -> CPUState -> CPUState
-modifyCpu pcf rf r (CPUState p regs) = CPUState (pcf p) (S.adjust rf r regs)
+modifyCpu pcf rf r (CPUState p regs) = CPUState (pcf p) (S.adjust' rf r regs)
+
+-- increments program coutner
+incPC :: CPUState -> CPUState
+incPC (CPUState p regs) = CPUState (p + 1) regs
+
+-- applies a function on the program coutner
+modifyPC :: (Int -> Int) -> CPUState -> CPUState
+modifyPC f (CPUState p regs) = CPUState (f p) regs
 
 -- initial cpu state (program counter is 0, all registers are 0)
 initCPUState :: CPUState
@@ -35,6 +43,8 @@ initCPUState = CPUState 0 $ S.replicate 4 0
 
 -- applies the instruction on the cpu
 runInstruction :: Instruction -> CPUState -> CPUState
+runInstruction (Copy (Immediate _) (Immediate _)) cpustate = incPC cpustate
+
 runInstruction (Copy (Immediate v) (Reg r)) cpustate =
     modifyCpu (+1) (const v) r cpustate
 
@@ -47,29 +57,42 @@ runInstruction (Inc (Reg r)) cpustate =
 runInstruction (Dec (Reg r)) cpustate =
     modifyCpu (+1) (subtract 1) r cpustate
 
-runInstruction (Jnz (Immediate rx) p) cpustate =
+runInstruction (Jnz (Immediate rx) (Immediate p)) cpustate =
     if rx /= 0 then
-        modifyCpu (+p) id 0 cpustate
+        modifyPC (+p) cpustate
     else
-        modifyCpu (+1) id 0 cpustate
+        incPC cpustate
 
-runInstruction (Jnz (Reg rx) p) cpustate =
+runInstruction (Jnz (Immediate rx) (Reg ry)) cpustate =
+    if rx /= 0 then
+        modifyPC (+ getRegValue cpustate ry) cpustate
+    else
+        incPC cpustate
+
+runInstruction (Jnz (Reg rx) (Immediate p)) cpustate =
     if getRegValue cpustate rx /= 0 then
-        modifyCpu (+p) id 0 cpustate
+        modifyPC (+p) cpustate
     else
-        modifyCpu (+1) id 0 cpustate
+        incPC cpustate
 
-runInstruction Noop cpustate =
-    modifyCpu (+1) id 0 cpustate
+runInstruction (Jnz (Reg rx) (Reg ry)) cpustate =
+    if getRegValue cpustate rx /= 0 then
+        modifyPC (+ getRegValue cpustate ry) cpustate
+    else
+        incPC cpustate
+
+runInstruction Noop cpustate = incPC cpustate
 
 runInstruction instr cpustate = error $ show (show instr, show cpustate)
 
 -- runs the program until the program counter points outside the instruction list
 runProgram :: CPUState -> S.Seq Instruction -> CPUState
-runProgram cpustate instr
-    | pc >= S.length instr = cpustate
-    | otherwise = runProgram (runInstruction (S.index instr pc) cpustate) instr
+runProgram cpustate instructions
+    | pc < 0 || pc >= S.length instructions = cpustate
+    | otherwise = runProgram cpustate' instructions
     where pc = getPC cpustate
+          instr = S.index instructions pc
+          cpustate' = runInstruction instr cpustate
 
 -- parses an operand (register "a", "b", "c" or "d" or immediate value)
 parseOperand :: String -> Operand
@@ -84,7 +107,7 @@ parseInstruction str = case words str of
     ["cpy", x, y] -> Copy (parseOperand x) (parseOperand y)
     ["inc", x] -> Inc (parseOperand x)
     ["dec", x] -> Dec (parseOperand x)
-    ["jnz", x, y] -> Jnz (parseOperand x) (read y)
+    ["jnz", x, y] -> Jnz (parseOperand x) (parseOperand y)
     _ -> Noop
 
 main :: IO ()
