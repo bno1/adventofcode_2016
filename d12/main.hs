@@ -1,4 +1,6 @@
-import qualified Data.Sequence as S
+import qualified Data.Vector as V
+import qualified Data.Vector.Unboxed as VU
+import qualified Data.Vector.Unboxed.Mutable as VUM
 
 data Operand =
     Immediate Int |
@@ -14,11 +16,11 @@ data Instruction =
     deriving (Show)
 
 -- cpu state described by program counter and register values
-data CPUState = CPUState !Int !(S.Seq Int) deriving (Show)
+data CPUState = CPUState !Int !(VU.Vector Int) deriving (Show)
 
 -- returns the value of a register
 getRegValue :: CPUState -> Int -> Int
-getRegValue (CPUState _ regs) = S.index regs
+getRegValue (CPUState _ regs) = (VU.!) regs
 
 -- returns the program counter
 getPC :: CPUState -> Int
@@ -27,7 +29,7 @@ getPC (CPUState p _) = p
 -- applies the first function to the progam counter and the second
 -- function to the register referenced by the third argument
 modifyCpu :: (Int -> Int) -> (Int -> Int) -> Int -> CPUState -> CPUState
-modifyCpu pcf rf r (CPUState p regs) = CPUState (pcf p) (S.adjust' rf r regs)
+modifyCpu pcf rf r (CPUState p regs) = CPUState (pcf p) (VU.modify (\v -> VUM.modify v rf r) regs)
 
 -- increments program coutner
 incPC :: CPUState -> CPUState
@@ -39,7 +41,7 @@ modifyPC f (CPUState p regs) = CPUState (f p) regs
 
 -- initial cpu state (program counter is 0, all registers are 0)
 initCPUState :: CPUState
-initCPUState = CPUState 0 $ S.replicate 4 0
+initCPUState = CPUState 0 $ VU.replicate 4 0
 
 -- applies the instruction on the cpu
 runInstruction :: Instruction -> CPUState -> CPUState
@@ -86,12 +88,12 @@ runInstruction Noop cpustate = incPC cpustate
 runInstruction instr cpustate = error $ show (show instr, show cpustate)
 
 -- runs the program until the program counter points outside the instruction list
-runProgram :: CPUState -> S.Seq Instruction -> CPUState
+runProgram :: CPUState -> V.Vector Instruction -> CPUState
 runProgram cpustate instructions
-    | pc < 0 || pc >= S.length instructions = cpustate
+    | pc < 0 || pc >= V.length instructions = cpustate
     | otherwise = runProgram cpustate' instructions
     where pc = getPC cpustate
-          instr = S.index instructions pc
+          instr = instructions V.! pc
           cpustate' = runInstruction instr cpustate
 
 -- parses an operand (register "a", "b", "c" or "d" or immediate value)
@@ -113,7 +115,7 @@ parseInstruction str = case words str of
 main :: IO ()
 main = do
     contents <- readFile "input.txt"
-    let instructions = S.fromList $ map parseInstruction $ lines contents
+    let instructions = V.fromList $ map parseInstruction $ lines contents
     let finalState = runProgram initCPUState instructions
 
     print finalState
